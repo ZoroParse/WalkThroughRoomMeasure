@@ -21,10 +21,13 @@ if (!match) {
 }
 
 const code = match[1];
-html = html.replace(scriptRe, ''); // remove from its original (head) position
 const classic = `<script>${code}</script>`;
+// Use function replacers so `$` sequences in the minified bundle (e.g. `$&`,
+// `$\``) are NOT interpreted as String.replace specials, which would corrupt
+// the code. Remove the original (head) script, then insert at end of <body>.
+html = html.replace(scriptRe, () => '');
 html = html.includes('</body>')
-  ? html.replace('</body>', `${classic}</body>`)
+  ? html.replace('</body>', () => `${classic}</body>`)
   : html + classic;
 
 writeFileSync(file, html);

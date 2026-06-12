@@ -63,11 +63,18 @@ export function orientedBox(
   return mesh;
 }
 
+const matHandle = new THREE.MeshStandardMaterial({
+  color: '#d8dde3',
+  roughness: 0.3,
+  metalness: 0.6,
+});
+
 export function buildWallEdge(
   edge: Edge,
   a: Vec2,
   b: Vec2,
   coords: Coords,
+  center: THREE.Vector3,
 ): THREE.Object3D {
   const wa = coords.toWorld(a);
   const wb = coords.toWorld(b);
@@ -79,8 +86,18 @@ export function buildWallEdge(
       break;
     }
     case 'door': {
-      // closed door slab + lintel over the top
-      group.add(orientedBox(wa, wb, DOOR_H, WALL_THICK * 0.6, DOOR_H / 2, matDoor));
+      // A framed opening with a leaf hinged open into the room.
+      const len = Math.hypot(wb.x - wa.x, wb.z - wa.z) || 0.001;
+      const ux = (wb.x - wa.x) / len;
+      const uz = (wb.z - wa.z) / len;
+      // inward normal (toward the room centre)
+      let nx = -uz;
+      let nz = ux;
+      if ((center.x - wa.x) * nx + (center.z - wa.z) * nz < 0) {
+        nx = -nx;
+        nz = -nz;
+      }
+      // lintel over the opening
       group.add(
         orientedBox(
           wa,
@@ -91,6 +108,43 @@ export function buildWallEdge(
           matFrame,
         ),
       );
+      // jamb posts at each end
+      for (const p of [wa, wb]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.07, DOOR_H, WALL_THICK),
+          matFrame,
+        );
+        post.position.set(p.x, DOOR_H / 2, p.z);
+        post.rotation.y = -Math.atan2(uz, ux);
+        group.add(post);
+      }
+      // door leaf, hinged at A, swung ~35° toward the room
+      const theta = 0.62;
+      const dx = ux * Math.cos(theta) + nx * Math.sin(theta);
+      const dz = uz * Math.cos(theta) + nz * Math.sin(theta);
+      const leafLen = len * 0.94;
+      const leaf = new THREE.Mesh(
+        new THREE.BoxGeometry(leafLen, DOOR_H, 0.045),
+        matDoor,
+      );
+      leaf.position.set(
+        wa.x + dx * (leafLen / 2),
+        DOOR_H / 2,
+        wa.z + dz * (leafLen / 2),
+      );
+      leaf.rotation.y = -Math.atan2(dz, dx);
+      group.add(leaf);
+      // handle near the leaf's free end
+      const handle = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 10, 8),
+        matHandle,
+      );
+      handle.position.set(
+        wa.x + dx * (leafLen * 0.86),
+        1.02,
+        wa.z + dz * (leafLen * 0.86),
+      );
+      group.add(handle);
       break;
     }
     case 'window': {

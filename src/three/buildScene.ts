@@ -33,8 +33,12 @@ export function buildScene(p: Project): BuiltScene {
   const group = new THREE.Group();
   const map = nodeMap(p);
 
-  // --- floor ----------------------------------------------------------
   const floorPoly = floorPolygon(p);
+  // room centre + diagonal (world) — used for door swing and furniture facing
+  const center = roomCenter(floorPoly, coords);
+  const roomDiag = roomDiagonal(floorPoly, coords);
+
+  // --- floor ----------------------------------------------------------
   if (floorPoly.length >= 3) {
     const shape = new THREE.Shape();
     floorPoly.forEach((pt, i) => {
@@ -56,13 +60,40 @@ export function buildScene(p: Project): BuiltScene {
     const a = map.get(e.a);
     const b = map.get(e.b);
     if (!a || !b) continue;
-    group.add(buildWallEdge(e, a, b, coords));
+    group.add(buildWallEdge(e, a, b, coords, center));
   }
 
   // --- furniture ------------------------------------------------------
-  group.add(buildFurniture(p, furnitureLoops(p), coords));
+  group.add(buildFurniture(p, furnitureLoops(p), coords, center, roomDiag));
 
   return { group, coords };
+}
+
+function roomCenter(poly: Vec2[], coords: Coords): THREE.Vector3 {
+  if (poly.length === 0) return new THREE.Vector3();
+  let sx = 0;
+  let sy = 0;
+  for (const pt of poly) {
+    sx += pt.x;
+    sy += pt.y;
+  }
+  return coords.toWorld({ x: sx / poly.length, y: sy / poly.length });
+}
+
+function roomDiagonal(poly: Vec2[], coords: Coords): number {
+  if (poly.length === 0) return 6;
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+  for (const pt of poly) {
+    const w = coords.toWorld(pt);
+    minX = Math.min(minX, w.x);
+    maxX = Math.max(maxX, w.x);
+    minZ = Math.min(minZ, w.z);
+    maxZ = Math.max(maxZ, w.z);
+  }
+  return Math.hypot(maxX - minX, maxZ - minZ) || 6;
 }
 
 /** Wall loop if closed, otherwise the bounding box of all nodes. */

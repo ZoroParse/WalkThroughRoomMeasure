@@ -12,7 +12,7 @@
  * avoid Node shims by hitting the documented wire API directly.
  * ------------------------------------------------------------------ */
 
-import { type ComponentType } from '../state/types.ts';
+import { type ComponentType, type FurnitureKind } from '../state/types.ts';
 
 export interface DetectedNode {
   id: string;
@@ -24,6 +24,7 @@ export interface DetectedEdge {
   b: string;
   type: ComponentType;
   loopId?: string;
+  kind?: FurnitureKind;
 }
 export interface DetectedLayout {
   nodes: DetectedNode[];
@@ -70,6 +71,21 @@ const REPORT_TOOL = {
               type: 'string',
               description: 'Furniture edges of one piece share a loopId.',
             },
+            kind: {
+              type: 'string',
+              enum: [
+                'bed',
+                'wardrobe',
+                'cabinet',
+                'table',
+                'desk',
+                'sofa',
+                'chair',
+                'other',
+              ],
+              description:
+                'For furniture edges only: what the piece is. All edges of one piece share the same kind.',
+            },
           },
           required: ['a', 'b', 'type'],
         },
@@ -88,7 +104,7 @@ Model the room as a GRAPH:
 
 Rules:
 - The room's outer walls form a closed loop of "wall" edges. Where a door or window interrupts a wall, put nodes at the opening's two ends and make that span a "door"/"window" edge, with the remaining solid parts as "wall" edges. Shared corners must reuse the SAME node id (so the loop is connected).
-- Each furniture piece (bed, wardrobe/robe, bedside table, etc.) is a CLOSED loop of "furniture" edges — one edge per side — all sharing a single loopId.
+- Each furniture piece (bed, wardrobe/robe, bedside table, etc.) is a CLOSED loop of "furniture" edges — one edge per side — all sharing a single loopId. Set "kind" on every edge of the piece to what it is: bed, wardrobe, cabinet, table, desk, sofa, chair, or other (a built-in robe/closet is "wardrobe"; a bedside table is "table").
 - Be as accurate as you can with coordinates; they will be shown to the user to confirm and adjust.
 Return ONLY the tool call.`;
 

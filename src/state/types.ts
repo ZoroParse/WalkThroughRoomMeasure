@@ -46,6 +46,17 @@ export interface Node {
   y: number;
 }
 
+/** What a furniture piece actually is, so the 3D view can model it. */
+export type FurnitureKind =
+  | 'bed'
+  | 'wardrobe'
+  | 'cabinet'
+  | 'table'
+  | 'desk'
+  | 'sofa'
+  | 'chair'
+  | 'other';
+
 /** A typed segment between two nodes — one measurable section. */
 export interface Edge {
   id: string;
@@ -54,6 +65,8 @@ export interface Edge {
   type: ComponentType;
   /** Furniture edges that form one closed piece share a loopId. */
   loopId?: string;
+  /** For furniture edges: what the piece is (drives the 3D model). */
+  kind?: FurnitureKind;
 }
 
 export type AppPhase = 'upload' | 'trace' | 'walkthrough' | 'rescale' | 'done';

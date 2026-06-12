@@ -278,6 +278,7 @@ class App {
         b: idMap.get(e.b)!,
         type: e.type,
         loopId: e.loopId,
+        kind: e.kind,
       }));
     store.update((p) => {
       p.nodes = nodes;
