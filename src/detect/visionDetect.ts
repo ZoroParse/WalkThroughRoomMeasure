@@ -131,20 +131,22 @@ export async function detectViaProxy(
       body: JSON.stringify({ imageDataUrl }),
     });
   } catch {
+    throw new ProxyUnavailable(); // network error → no proxy here
+  }
+  // A static host (no proxy) answers a 404/HTML page, not our JSON — treat any
+  // non-JSON response as "no proxy" so we cleanly fall back to a key prompt.
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('application/json')) throw new ProxyUnavailable();
+
+  let data: { error?: string } & Partial<DetectedLayout>;
+  try {
+    data = (await res.json()) as typeof data;
+  } catch {
     throw new ProxyUnavailable();
   }
-  if (res.status === 404 || res.status === 405) throw new ProxyUnavailable();
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const e = (await res.json()) as { error?: string };
-      detail = e?.error ?? '';
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail || `Detection failed (${res.status}).`);
-  }
-  return finalize((await res.json()) as DetectedLayout);
+  if (!res.ok) throw new Error(data?.error || `Detection failed (${res.status}).`);
+  if (!data?.nodes || !data?.edges) throw new ProxyUnavailable();
+  return finalize(data as DetectedLayout);
 }
 
 /** Fallback: call OpenAI directly with a key the user provides in-browser. */
