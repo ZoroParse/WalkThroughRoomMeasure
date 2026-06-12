@@ -23,6 +23,10 @@ import { computeCalibration } from './rescale/calibrate.ts';
 import { buildAnnotatedBlueprint, buildMeasurementsJson } from './export/annotate.ts';
 import { shareOrDownload } from './export/share.ts';
 
+import { uid } from './util/id.ts';
+import { ensureApiKey } from './detect/apiKey.ts';
+import { detectLayout, type DetectedLayout } from './detect/visionDetect.ts';
+
 import {
   PHASE_TITLE,
   surfaceFor,
@@ -151,10 +155,14 @@ class App {
       this.controller.closeLoop();
       this.traceCanvas.render();
     });
+    const detect = el('button', { class: 'accent' }, [
+      '✨ Auto-detect',
+    ]) as HTMLButtonElement;
+    detect.addEventListener('click', () => void this.autoDetect(detect));
     const start = el('button', { class: 'primary' }, ['Walk & measure ›']);
     start.addEventListener('click', () => this.startWalkthrough());
 
-    this.toolbar.append(seg, endLine, closeLoop, start);
+    this.toolbar.append(seg, detect, endLine, closeLoop, start);
 
     this.hud.append(
       el(
@@ -227,6 +235,56 @@ class App {
     }
     if (v.warnings.length) toast(v.warnings[0]);
     store.setPhase('walkthrough');
+  }
+
+  private async autoDetect(btn: HTMLButtonElement): Promise<void> {
+    const { imageDataUrl } = store.state;
+    if (!imageDataUrl) return;
+    const key = await ensureApiKey();
+    if (!key) return; // user cancelled the key prompt
+
+    const label = btn.textContent;
+    btn.toggleAttribute('disabled', true);
+    btn.textContent = '✨ Detecting…';
+    try {
+      const layout = await detectLayout(imageDataUrl, key);
+      this.applyDetected(layout);
+      this.traceCanvas.fit();
+      this.traceCanvas.render();
+      toast('Detected the room — review and adjust, then Walk & measure.');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Auto-detect failed.');
+    } finally {
+      btn.toggleAttribute('disabled', false);
+      btn.textContent = label;
+    }
+  }
+
+  /** Replace the traced graph with the detected one (normalised → image px). */
+  private applyDetected(layout: DetectedLayout): void {
+    const { imageW, imageH } = store.state;
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    const idMap = new Map<string, string>();
+    const nodes = layout.nodes.map((n) => {
+      const realId = uid('n');
+      idMap.set(n.id, realId);
+      return { id: realId, x: clamp01(n.x) * imageW, y: clamp01(n.y) * imageH };
+    });
+    const edges = layout.edges
+      .filter((e) => idMap.has(e.a) && idMap.has(e.b) && e.a !== e.b)
+      .map((e) => ({
+        id: uid('e'),
+        a: idMap.get(e.a)!,
+        b: idMap.get(e.b)!,
+        type: e.type,
+        loopId: e.loopId,
+      }));
+    store.update((p) => {
+      p.nodes = nodes;
+      p.edges = edges;
+      p.measurements = {};
+      p.cmPerPixel = null;
+    });
   }
 
   private onMeasureNext(): void {
