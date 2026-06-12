@@ -1,4 +1,6 @@
 node_modules
 dist
+dist-single
+/RoomMeasure.html
 *.local
 .DS_Store

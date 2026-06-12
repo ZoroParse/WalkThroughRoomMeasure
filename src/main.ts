@@ -1,4 +1,5 @@
 import './styles.css';
+import sampleBlueprint from './assets/sample-blueprint.jpg';
 
 import { store } from './state/store.ts';
 import { clearProject } from './state/persistence.ts';
@@ -285,8 +286,9 @@ class App {
 }
 
 function sampleUrl(): string {
-  // files in public/ are served at the app base (works on GitHub Pages too)
-  return `${import.meta.env.BASE_URL}sample-blueprint.png`;
+  // bundled asset: a hashed URL in the Pages build, an inlined data URL in the
+  // single-file build — so the sample works in both without a separate request.
+  return sampleBlueprint;
 }
 
 new App();
