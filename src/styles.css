@@ -1,0 +1,361 @@
+/* ------------------------------------------------------------------ *
+ * Room Walkthrough & Measure — "drafting table" theme.
+ * Blueprint ink palette: deep navy ground, graph-paper cyan, with the
+ * four component colors used consistently across the 2D trace, the 3D
+ * arrow overlay, and the exported annotations.
+ * ------------------------------------------------------------------ */
+
+:root {
+  /* ground + surfaces */
+  --ink-900: #0b1017;
+  --ink-800: #0f1722;
+  --ink-700: #16212e;
+  --ink-600: #1f2d3d;
+  --line: #2c3e52;
+  --paper: #f4f6f8;
+
+  /* text */
+  --fg: #e8eef4;
+  --fg-dim: #9fb1c2;
+
+  /* accents */
+  --cyan: #38bdf8; /* blueprint guide / primary action */
+  --cyan-deep: #0e7490;
+  --go: #34d399; /* the green "Done!" */
+  --go-deep: #047857;
+
+  /* component types — shared everywhere */
+  --c-wall: #cbd5e1;
+  --c-window: #38bdf8;
+  --c-door: #fb923c;
+  --c-furniture: #34d399;
+
+  --r: 12px;
+  --tap: 44px; /* minimum touch target */
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink-900);
+  color: var(--fg);
+  font-family:
+    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  /* respect notches / home indicators */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* ---- top bar ---- */
+#topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, var(--ink-800), var(--ink-900));
+  border-bottom: 1px solid var(--line);
+  min-height: 52px;
+}
+#phase-title {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  font-size: 0.95rem;
+}
+#phase-title small {
+  display: block;
+  font-weight: 400;
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+#topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---- stage ---- */
+#stage {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 120% at 50% 0%, var(--ink-700), var(--ink-900) 70%);
+}
+#trace-canvas,
+#scene-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none; /* we handle all gestures ourselves */
+}
+#scene-canvas {
+  display: none;
+}
+#stage[data-surface='scene'] #trace-canvas {
+  display: none;
+}
+#stage[data-surface='scene'] #scene-canvas {
+  display: block;
+}
+
+/* ---- bottom toolbar ---- */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(0deg, var(--ink-800), var(--ink-900));
+  border-top: 1px solid var(--line);
+  min-height: 60px;
+  overflow-x: auto;
+}
+
+/* ---- buttons ---- */
+button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--ink-600);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: var(--tap);
+  padding: 0 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.05s ease;
+  user-select: none;
+}
+button:active {
+  transform: scale(0.97);
+}
+button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+button.primary {
+  background: var(--cyan-deep);
+  border-color: var(--cyan);
+  color: #eafaff;
+  font-weight: 600;
+}
+button.go {
+  background: var(--go-deep);
+  border-color: var(--go);
+  color: #eafff5;
+  font-weight: 700;
+}
+button.ghost {
+  background: transparent;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- segmented tool selector (trace) ---- */
+.segmented {
+  display: inline-flex;
+  background: var(--ink-700);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 3px;
+}
+.segmented button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--ink-600);
+  border-color: var(--line);
+}
+.segmented button .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ---- HUD (floating prompts / inputs) ---- */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 16px;
+  gap: 12px;
+}
+#hud > * {
+  pointer-events: auto;
+}
+
+.card {
+  background: rgba(15, 23, 34, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* measurement input HUD */
+.measure-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.measure-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.measure-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+}
+.measure-kind .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+.measure-progress {
+  color: var(--fg-dim);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.measure-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.measure-input-row input {
+  flex: 1;
+  font: inherit;
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--fg);
+  background: var(--ink-700);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+.measure-input-row input:focus {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
+.measure-unit {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+.measure-nav {
+  display: flex;
+  gap: 10px;
+}
+.measure-nav button {
+  flex: 1;
+}
+
+/* progress bar */
+.bar {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--ink-700);
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan), var(--go));
+  transition: width 0.3s ease;
+}
+
+/* centered overlay messages (upload / done) */
+.overlay-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: auto;
+}
+.panel {
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+.panel h1 {
+  font-size: 1.5rem;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.panel p {
+  color: var(--fg-dim);
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+.panel .actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--fg-dim);
+  line-height: 1.4;
+}
+
+.toast {
+  align-self: center;
+  background: var(--ink-600);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

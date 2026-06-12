@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0f1419" />
+    <title>Room Walkthrough &amp; Measure</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top bar: phase title + actions -->
+      <header id="topbar">
+        <div id="phase-title">Room Walkthrough</div>
+        <div id="topbar-actions"></div>
+      </header>
+
+      <!-- Stage holds whichever surface the current phase needs -->
+      <main id="stage">
+        <!-- 2D tracing canvas (upload + trace phases) -->
+        <canvas id="trace-canvas"></canvas>
+        <!-- 3D scene canvas (walkthrough + rescale phases) -->
+        <canvas id="scene-canvas"></canvas>
+        <!-- Floating HUD / prompts, overlaying only the stage -->
+        <div id="hud"></div>
+      </main>
+
+      <!-- Bottom toolbar: phase-specific controls -->
+      <footer id="toolbar"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
