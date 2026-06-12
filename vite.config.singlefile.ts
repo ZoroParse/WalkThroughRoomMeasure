@@ -9,8 +9,15 @@ export default defineConfig({
   plugins: [viteSingleFile()],
   build: {
     outDir: 'dist-single',
+    target: 'es2018',
     assetsInlineLimit: 100_000_000, // inline every asset (incl. the sample image)
     cssCodeSplit: false,
-    rollupOptions: { output: { inlineDynamicImports: true } },
+    modulePreload: false,
+    // Emit a single classic (non-module) IIFE bundle. iOS Quick Look and some
+    // in-app webviews refuse <script type="module">, so a plain script is the
+    // most broadly runnable form for a file you send around.
+    rollupOptions: {
+      output: { format: 'iife', inlineDynamicImports: true },
+    },
   },
 });
