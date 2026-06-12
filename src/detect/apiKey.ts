@@ -1,14 +1,14 @@
 /* ------------------------------------------------------------------ *
- * Anthropic API key handling for the in-browser vision detector.
+ * OpenAI API key handling for the in-browser vision detector.
  *
  * The key is stored ONLY in this browser's localStorage and sent straight
- * to api.anthropic.com — it never touches any server of ours (there is
- * none). promptForApiKey renders a small overlay form when no key is set.
+ * to api.openai.com — it never touches any server of ours (there is none).
+ * promptForApiKey renders a small overlay form when no key is set.
  * ------------------------------------------------------------------ */
 
 import { el } from '../util/dom.ts';
 
-const KEY = 'wtrm:anthropicKey';
+const KEY = 'wtrm:openaiKey';
 
 export function getApiKey(): string | null {
   try {
@@ -45,9 +45,9 @@ function promptForApiKey(): Promise<string | null> {
   return new Promise((resolve) => {
     const input = el('input', {
       type: 'password',
-      placeholder: 'sk-ant-...',
+      placeholder: 'sk-...',
       autocomplete: 'off',
-      'aria-label': 'Anthropic API key',
+      'aria-label': 'OpenAI API key',
     }) as HTMLInputElement;
 
     const save = el('button', { class: 'primary' }, ['Save & detect']);
@@ -55,14 +55,14 @@ function promptForApiKey(): Promise<string | null> {
 
     const overlay = el('div', { class: 'overlay-center modal-overlay' }, [
       el('div', { class: 'panel card' }, [
-        el('h1', { text: 'Connect Claude vision' }),
+        el('h1', { text: 'Connect OpenAI vision' }),
         el('p', {
-          text: 'Paste your Anthropic API key to auto-detect the room. It is stored only on this device and sent directly to Anthropic — never to us.',
+          text: 'Paste your OpenAI API key to auto-detect the room. It is stored only on this device and sent directly to OpenAI — never to us.',
         }),
         input,
         el('p', {
           class: 'hint',
-          html: 'Get a key at <strong>console.anthropic.com</strong>. Standard API usage rates apply.',
+          html: 'Get a key at <strong>platform.openai.com</strong>. Standard API usage rates apply.',
         }),
         el('div', { class: 'actions' }, [save, cancel]),
       ]),

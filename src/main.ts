@@ -277,8 +277,8 @@ class App {
         a: idMap.get(e.a)!,
         b: idMap.get(e.b)!,
         type: e.type,
-        loopId: e.loopId,
-        kind: e.kind,
+        loopId: e.loopId ?? undefined,
+        kind: e.kind ?? undefined,
       }));
     store.update((p) => {
       p.nodes = nodes;

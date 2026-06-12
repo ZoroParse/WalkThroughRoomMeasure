@@ -1,15 +1,17 @@
 /* ------------------------------------------------------------------ *
- * Auto-detect the room layout from a blueprint image using Claude vision.
+ * Auto-detect the room layout from a blueprint image using the OpenAI
+ * vision API.
  *
  * Runs entirely client-side: the user's API key (held only in their own
- * browser) calls the Anthropic Messages API directly. We force a single
- * tool call so the model returns the layout as a structured graph —
- * nodes (junctions) + typed edges (one measurable section each) — in
- * normalised 0..1 coordinates, which the caller maps into image pixels.
+ * browser) calls the OpenAI Chat Completions API directly. We use
+ * Structured Outputs (a strict JSON schema) so the model returns the
+ * layout as a graph — nodes (junctions) + typed edges (one measurable
+ * section each) — in normalised 0..1 coordinates, which the caller maps
+ * into image pixels.
  *
- * Raw fetch (not the SDK) is a deliberate choice here: this ships as one
- * self-contained, no-backend browser file, so we keep the bundle lean and
- * avoid Node shims by hitting the documented wire API directly.
+ * Raw fetch (not the SDK) is deliberate: this ships as one self-contained,
+ * no-backend browser file, so we keep the bundle lean and hit the
+ * documented wire API directly.
  * ------------------------------------------------------------------ */
 
 import { type ComponentType, type FurnitureKind } from '../state/types.ts';
@@ -23,156 +25,138 @@ export interface DetectedEdge {
   a: string;
   b: string;
   type: ComponentType;
-  loopId?: string;
-  kind?: FurnitureKind;
+  loopId?: string | null;
+  kind?: FurnitureKind | null;
 }
 export interface DetectedLayout {
   nodes: DetectedNode[];
   edges: DetectedEdge[];
 }
 
-const MODEL = 'claude-opus-4-8';
+const MODEL = 'gpt-4o';
 
-const REPORT_TOOL = {
-  name: 'report_blueprint',
-  description:
-    'Report the detected room layout as a graph of junction nodes and typed edges.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      nodes: {
-        type: 'array',
-        description:
-          'Junction/corner points. Coordinates are fractions of the image (x: 0=left..1=right, y: 0=top..1=bottom).',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            x: { type: 'number' },
-            y: { type: 'number' },
-          },
-          required: ['id', 'x', 'y'],
-        },
-      },
-      edges: {
-        type: 'array',
-        description:
-          'One edge per measurable section, between two node ids. Shared junctions reuse the same node id.',
-        items: {
-          type: 'object',
-          properties: {
-            a: { type: 'string' },
-            b: { type: 'string' },
-            type: {
-              type: 'string',
-              enum: ['wall', 'window', 'door', 'furniture'],
-            },
-            loopId: {
-              type: 'string',
-              description: 'Furniture edges of one piece share a loopId.',
-            },
-            kind: {
-              type: 'string',
-              enum: [
-                'bed',
-                'wardrobe',
-                'cabinet',
-                'table',
-                'desk',
-                'sofa',
-                'chair',
-                'other',
-              ],
-              description:
-                'For furniture edges only: what the piece is. All edges of one piece share the same kind.',
-            },
-          },
-          required: ['a', 'b', 'type'],
+// Strict Structured-Outputs schema: every object lists all properties in
+// `required` and sets additionalProperties:false; optional values are nullable.
+const SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['nodes', 'edges'],
+  properties: {
+    nodes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'x', 'y'],
+        properties: {
+          id: { type: 'string' },
+          x: { type: 'number', description: '0=left .. 1=right' },
+          y: { type: 'number', description: '0=top .. 1=bottom' },
         },
       },
     },
-    required: ['nodes', 'edges'],
+    edges: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['a', 'b', 'type', 'loopId', 'kind'],
+        properties: {
+          a: { type: 'string' },
+          b: { type: 'string' },
+          type: {
+            type: 'string',
+            enum: ['wall', 'window', 'door', 'furniture'],
+          },
+          loopId: {
+            type: ['string', 'null'],
+            description: 'Furniture edges of one piece share a loopId.',
+          },
+          kind: {
+            type: ['string', 'null'],
+            description:
+              'Furniture edges only: bed, wardrobe, cabinet, table, desk, sofa, chair, or other.',
+          },
+        },
+      },
+    },
   },
 } as const;
 
 const PROMPT = `You are reading a 2D architectural floor-plan / blueprint of a single room.
-Identify every measurable SECTION and return them via the report_blueprint tool.
+Identify every measurable SECTION and return the layout as a graph.
 
-Model the room as a GRAPH:
-- NODES are junction/corner points — placed wherever a component starts, ends, or meets another component (room corners, the two ends of a door or window opening on a wall, and each corner of a furniture piece). Coordinates are fractions of the image: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
-- EDGES connect two nodes and are typed: "wall", "window", "door", or "furniture". Each edge is exactly ONE section to be measured.
+NODES are junction/corner points — placed wherever a component starts, ends, or meets another component (room corners, the two ends of a door or window opening on a wall, and each corner of a furniture piece). Coordinates are fractions of the image: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
+
+EDGES connect two nodes and are typed "wall", "window", "door", or "furniture". Each edge is exactly ONE section to be measured.
 
 Rules:
-- The room's outer walls form a closed loop of "wall" edges. Where a door or window interrupts a wall, put nodes at the opening's two ends and make that span a "door"/"window" edge, with the remaining solid parts as "wall" edges. Shared corners must reuse the SAME node id (so the loop is connected).
-- Each furniture piece (bed, wardrobe/robe, bedside table, etc.) is a CLOSED loop of "furniture" edges — one edge per side — all sharing a single loopId. Set "kind" on every edge of the piece to what it is: bed, wardrobe, cabinet, table, desk, sofa, chair, or other (a built-in robe/closet is "wardrobe"; a bedside table is "table").
-- Be as accurate as you can with coordinates; they will be shown to the user to confirm and adjust.
-Return ONLY the tool call.`;
+- The room's outer walls form a closed loop of "wall" edges. Where a door or window interrupts a wall, put nodes at the opening's two ends and make that span a "door"/"window" edge, with the remaining solid parts as "wall" edges. Shared corners MUST reuse the same node id so the loop is connected.
+- Each furniture piece (bed, wardrobe/robe, bedside table, etc.) is a CLOSED loop of "furniture" edges — one edge per side — all sharing a single loopId. Set "kind" on every edge of the piece (a built-in robe/closet is "wardrobe"; a bedside table is "table"). For wall/window/door edges, set loopId and kind to null.
+- Be as accurate as you can with coordinates; they will be shown to the user to confirm and adjust.`;
 
-interface ToolUseBlock {
-  type: 'tool_use';
-  name: string;
-  input: DetectedLayout;
+interface ChatResponse {
+  choices?: { message?: { content?: string | null; refusal?: string | null } }[];
+  error?: { message?: string };
 }
 
-/** Call Claude vision and return the detected layout (normalised coords). */
+/** Call OpenAI vision and return the detected layout (normalised coords). */
 export async function detectLayout(
   imageDataUrl: string,
   apiKey: string,
 ): Promise<DetectedLayout> {
-  const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(imageDataUrl);
-  if (!m) throw new Error('Unsupported image format for detection.');
-  const [, mediaType, data] = m;
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 8000,
-      tools: [REPORT_TOOL],
-      tool_choice: { type: 'tool', name: 'report_blueprint' },
       messages: [
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data },
-            },
             { type: 'text', text: PROMPT },
+            { type: 'image_url', image_url: { url: imageDataUrl, detail: 'high' } },
           ],
         },
       ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'blueprint_layout', strict: true, schema: SCHEMA },
+      },
     }),
   });
 
   if (!res.ok) {
     let detail = '';
     try {
-      const err = await res.json();
+      const err = (await res.json()) as ChatResponse;
       detail = err?.error?.message ?? '';
     } catch {
       /* ignore */
     }
     if (res.status === 401)
-      throw new Error('That API key was rejected. Check it and try again.');
+      throw new Error('That OpenAI API key was rejected. Check it and try again.');
     throw new Error(
       `Detection failed (${res.status})${detail ? `: ${detail}` : ''}.`,
     );
   }
 
-  const body = (await res.json()) as { content: unknown[] };
-  const tool = (body.content as ToolUseBlock[]).find(
-    (b) => b?.type === 'tool_use' && b?.name === 'report_blueprint',
-  );
-  if (!tool) throw new Error('The model did not return a layout. Try again.');
+  const body = (await res.json()) as ChatResponse;
+  const msg = body.choices?.[0]?.message;
+  if (msg?.refusal) throw new Error(`The model declined: ${msg.refusal}`);
+  const text = msg?.content;
+  if (!text) throw new Error('The model did not return a layout. Try again.');
 
-  const layout = tool.input;
+  let layout: DetectedLayout;
+  try {
+    layout = JSON.parse(text) as DetectedLayout;
+  } catch {
+    throw new Error('Could not read the detected layout. Try again.');
+  }
   if (!layout?.nodes?.length || !layout?.edges?.length)
     throw new Error('No room components were detected in this image.');
   return layout;
