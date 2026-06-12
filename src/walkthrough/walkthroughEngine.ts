@@ -28,6 +28,7 @@ export class WalkthroughEngine {
   private animator: CameraAnimator;
   private coords: Coords;
   private center: THREE.Vector3;
+  private roomRadius = 4;
   sections: Section[] = [];
   index = 0;
   onChange: ((s: Section, i: number, total: number) => void) | null = null;
@@ -50,6 +51,7 @@ export class WalkthroughEngine {
     this.scene.setRoom(built.group);
 
     this.center = roomCenterWorld(p, this.coords);
+    this.roomRadius = roomRadiusWorld(p, this.coords, this.center);
     this.sections = deriveSections(p);
     this.index = 0;
 
@@ -74,20 +76,20 @@ export class WalkthroughEngine {
     // upright span marker standing just in front of the segment
     this.arrow.update(a, b, inward, COMPONENT_COLOR[s.type]);
 
-    // Camera stands inside the room facing the section. For walls we back
-    // up toward the opposite wall so the whole span (and both arrowheads)
-    // fits the frame; for interior furniture we just step back from it.
-    let camPos: THREE.Vector3;
-    if (inwardLen > 0.6) {
-      const standoff = Math.min(6, Math.max(1.2, inwardLen * 2 - 0.4));
-      camPos = mid.clone().addScaledVector(inward, standoff).setY(EYE_H);
-    } else {
-      camPos = mid.clone().addScaledVector(inward, -1.8).setY(EYE_H);
-    }
-    const pose: CameraPose = {
-      position: camPos,
-      target: mid.clone().setY(LOOK_H),
-    };
+    // Elevated 3/4 vantage: pull back across the room (and beyond the far
+    // wall) and rise up, looking down at the highlighted segment. This keeps
+    // the whole room in frame so it's obvious *which* wall is being measured,
+    // rather than a flat first-person view that just fills with one wall.
+    const back = 2 * inwardLen + this.roomRadius * 0.9 + 1.5;
+    const height = clamp(this.roomRadius * 1.15 + 1.5, 3.5, 16);
+    const camPos = mid
+      .clone()
+      .addScaledVector(inward, back)
+      .setY(height);
+    // aim a little past the segment toward the room so the wall sits low in
+    // frame with the rest of the room visible behind it.
+    const target = mid.clone().lerp(this.center, 0.18).setY(LOOK_H);
+    const pose: CameraPose = { position: camPos, target };
     if (animate) this.animator.to(pose);
     else this.animator.set(pose);
 
@@ -118,6 +120,25 @@ export class WalkthroughEngine {
   dispose(): void {
     this.arrow.dispose();
   }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** Largest world-space distance from the room centre to any traced node. */
+function roomRadiusWorld(
+  p: Project,
+  coords: Coords,
+  center: THREE.Vector3,
+): number {
+  let max = 0;
+  for (const n of p.nodes) {
+    const w = coords.toWorld({ x: n.x, y: n.y });
+    const d = Math.hypot(w.x - center.x, w.z - center.z);
+    if (d > max) max = d;
+  }
+  return max > 0.5 ? max : 4;
 }
 
 function roomCenterWorld(p: Project, coords: Coords): THREE.Vector3 {
