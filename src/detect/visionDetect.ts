@@ -100,8 +100,55 @@ interface ChatResponse {
   error?: { message?: string };
 }
 
-/** Call OpenAI vision and return the detected layout (normalised coords). */
-export async function detectLayout(
+/** Thrown when no server-side proxy is present (e.g. the standalone file). */
+export class ProxyUnavailable extends Error {
+  constructor() {
+    super('No detection proxy at this origin.');
+    this.name = 'ProxyUnavailable';
+  }
+}
+
+function finalize(layout: DetectedLayout): DetectedLayout {
+  if (!layout?.nodes?.length || !layout?.edges?.length)
+    throw new Error('No room components were detected in this image.');
+  return layout;
+}
+
+/**
+ * Preferred path: a same-origin serverless proxy (api/detect) holds the API
+ * key server-side, so nothing secret reaches the browser. Throws
+ * ProxyUnavailable when there is no proxy here (static hosting / local file),
+ * so the caller can fall back to a user-supplied key.
+ */
+export async function detectViaProxy(
+  imageDataUrl: string,
+): Promise<DetectedLayout> {
+  let res: Response;
+  try {
+    res = await fetch('/api/detect', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ imageDataUrl }),
+    });
+  } catch {
+    throw new ProxyUnavailable();
+  }
+  if (res.status === 404 || res.status === 405) throw new ProxyUnavailable();
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const e = (await res.json()) as { error?: string };
+      detail = e?.error ?? '';
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `Detection failed (${res.status}).`);
+  }
+  return finalize((await res.json()) as DetectedLayout);
+}
+
+/** Fallback: call OpenAI directly with a key the user provides in-browser. */
+export async function detectDirect(
   imageDataUrl: string,
   apiKey: string,
 ): Promise<DetectedLayout> {
@@ -157,7 +204,5 @@ export async function detectLayout(
   } catch {
     throw new Error('Could not read the detected layout. Try again.');
   }
-  if (!layout?.nodes?.length || !layout?.edges?.length)
-    throw new Error('No room components were detected in this image.');
-  return layout;
+  return finalize(layout);
 }

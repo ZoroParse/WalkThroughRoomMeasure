@@ -25,7 +25,12 @@ import { shareOrDownload } from './export/share.ts';
 
 import { uid } from './util/id.ts';
 import { ensureApiKey } from './detect/apiKey.ts';
-import { detectLayout, type DetectedLayout } from './detect/visionDetect.ts';
+import {
+  detectViaProxy,
+  detectDirect,
+  ProxyUnavailable,
+  type DetectedLayout,
+} from './detect/visionDetect.ts';
 
 import {
   PHASE_TITLE,
@@ -240,24 +245,42 @@ class App {
   private async autoDetect(btn: HTMLButtonElement): Promise<void> {
     const { imageDataUrl } = store.state;
     if (!imageDataUrl) return;
-    const key = await ensureApiKey();
-    if (!key) return; // user cancelled the key prompt
 
     const label = btn.textContent;
     btn.toggleAttribute('disabled', true);
     btn.textContent = '✨ Detecting…';
     try {
-      const layout = await detectLayout(imageDataUrl, key);
-      this.applyDetected(layout);
-      this.traceCanvas.fit();
-      this.traceCanvas.render();
-      toast('Detected the room — review and adjust, then Walk & measure.');
+      const layout = await this.runDetection(imageDataUrl);
+      if (layout) {
+        this.applyDetected(layout);
+        this.traceCanvas.fit();
+        this.traceCanvas.render();
+        toast('Detected the room — review and adjust, then Walk & measure.');
+      }
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Auto-detect failed.');
     } finally {
       btn.toggleAttribute('disabled', false);
       btn.textContent = label;
     }
+  }
+
+  /**
+   * Detect via the server-side proxy when one exists (hosted build — no key
+   * in the browser); otherwise fall back to a user-supplied key (the
+   * standalone file). Returns null if the user cancels the key prompt.
+   */
+  private async runDetection(
+    imageDataUrl: string,
+  ): Promise<DetectedLayout | null> {
+    try {
+      return await detectViaProxy(imageDataUrl);
+    } catch (err) {
+      if (!(err instanceof ProxyUnavailable)) throw err;
+    }
+    const key = await ensureApiKey();
+    if (!key) return null;
+    return detectDirect(imageDataUrl, key);
   }
 
   /** Replace the traced graph with the detected one (normalised → image px). */
