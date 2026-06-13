@@ -41,7 +41,13 @@ export function ensureApiKey(): Promise<string | null> {
   return promptForApiKey();
 }
 
-function promptForApiKey(): Promise<string | null> {
+/** Clear any stored key and prompt for a fresh one (the "change key" action). */
+export function changeApiKey(): Promise<string | null> {
+  clearApiKey();
+  return promptForApiKey();
+}
+
+export function promptForApiKey(): Promise<string | null> {
   return new Promise((resolve) => {
     const input = el('input', {
       type: 'password',

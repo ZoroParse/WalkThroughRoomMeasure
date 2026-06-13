@@ -108,6 +108,14 @@ export class ProxyUnavailable extends Error {
   }
 }
 
+/** Thrown when the supplied API key is rejected, so the caller can re-prompt. */
+export class AuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
 function finalize(layout: DetectedLayout): DetectedLayout {
   if (!layout?.nodes?.length || !layout?.edges?.length)
     throw new Error('No room components were detected in this image.');
@@ -188,7 +196,7 @@ export async function detectDirect(
       /* ignore */
     }
     if (res.status === 401)
-      throw new Error('That OpenAI API key was rejected. Check it and try again.');
+      throw new AuthError('That OpenAI API key was rejected. Enter a different one.');
     throw new Error(
       `Detection failed (${res.status})${detail ? `: ${detail}` : ''}.`,
     );

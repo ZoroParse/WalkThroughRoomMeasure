@@ -24,11 +24,12 @@ import { buildAnnotatedBlueprint, buildMeasurementsJson } from './export/annotat
 import { shareOrDownload } from './export/share.ts';
 
 import { uid } from './util/id.ts';
-import { ensureApiKey } from './detect/apiKey.ts';
+import { ensureApiKey, changeApiKey, clearApiKey } from './detect/apiKey.ts';
 import {
   detectViaProxy,
   detectDirect,
   ProxyUnavailable,
+  AuthError,
   type DetectedLayout,
 } from './detect/visionDetect.ts';
 
@@ -87,10 +88,16 @@ class App {
     });
     document.body.append(this.fileInput);
 
-    // a persistent "Start over" action
+    // persistent top-bar actions
+    const keyBtn = el('button', { class: 'ghost' }, ['API key']);
+    keyBtn.addEventListener('click', () => {
+      void changeApiKey().then((k) => {
+        if (k) toast('API key saved on this device.');
+      });
+    });
     const reset = el('button', { class: 'ghost' }, ['Start over']);
     reset.addEventListener('click', () => this.startOver());
-    this.topActions.append(reset);
+    this.topActions.append(keyBtn, reset);
 
     window.addEventListener('resize', () => this.onResize());
     store.subscribe(() => this.onStoreChange());
@@ -278,9 +285,22 @@ class App {
     } catch (err) {
       if (!(err instanceof ProxyUnavailable)) throw err;
     }
-    const key = await ensureApiKey();
-    if (!key) return null;
-    return detectDirect(imageDataUrl, key);
+    // No proxy here: use a key on this device, re-prompting if it's rejected.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const key = await ensureApiKey();
+      if (!key) return null;
+      try {
+        return await detectDirect(imageDataUrl, key);
+      } catch (e) {
+        if (e instanceof AuthError) {
+          clearApiKey();
+          toast('Key rejected — enter a different key.');
+          continue;
+        }
+        throw e;
+      }
+    }
+    return null;
   }
 
   /** Replace the traced graph with the detected one (normalised → image px). */
