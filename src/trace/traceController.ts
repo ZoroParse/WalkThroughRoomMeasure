@@ -7,15 +7,28 @@
  * ------------------------------------------------------------------ */
 
 import { store } from '../state/store.ts';
-import { type ComponentType } from '../state/types.ts';
+import { type ComponentType, type FurnitureKind } from '../state/types.ts';
 import { type Vec2, dist } from '../graph/geometryHelpers.ts';
 import { uid } from '../util/id.ts';
+import { toast } from '../util/dom.ts';
 import { nearestNode, nearestEdge } from './hitTest.ts';
 import { TraceCanvas } from './traceCanvas.ts';
 
 export type Tool = ComponentType | 'select' | 'delete';
 
 const TAP_MOVE_THRESHOLD = 8; // screen px
+
+// Cycle order when re-labelling a furniture piece in select mode.
+const FURNITURE_KINDS: FurnitureKind[] = [
+  'bed',
+  'wardrobe',
+  'cabinet',
+  'table',
+  'desk',
+  'sofa',
+  'chair',
+  'other',
+];
 
 interface PointerInfo {
   x: number;
@@ -218,9 +231,20 @@ export class TraceController {
     if (this.tool === 'select') {
       const edge = nearestEdge(store.state, pt, tol);
       if (edge) {
-        const order: ComponentType[] = ['wall', 'window', 'door', 'furniture'];
-        const next = order[(order.indexOf(edge.type) + 1) % order.length];
-        store.setEdgeType(edge.id, next);
+        if (edge.type === 'furniture') {
+          // furniture: cycle the KIND of the whole piece so the 3D model reads
+          // right, rather than changing the component type.
+          const idx = edge.kind ? FURNITURE_KINDS.indexOf(edge.kind) : -1;
+          const next = FURNITURE_KINDS[(idx + 1) % FURNITURE_KINDS.length];
+          store.setFurnitureKind(edge.id, next);
+          toast(`Furniture: ${next}`);
+        } else {
+          // non-furniture: cycle the component type (kind stays undefined when
+          // it lands on furniture — footprint inference handles the model).
+          const order: ComponentType[] = ['wall', 'window', 'door', 'furniture'];
+          const next = order[(order.indexOf(edge.type) + 1) % order.length];
+          store.setEdgeType(edge.id, next);
+        }
         this.onChange();
       }
       return;

@@ -40,9 +40,4 @@ export class Coords {
       (pt.y - this.cy) * this.s,
     );
   }
-
-  /** Convert an image-pixel length to world units. */
-  lenToWorld(px: number): number {
-    return px * this.s;
-  }
 }

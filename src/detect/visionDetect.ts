@@ -123,6 +123,40 @@ function finalize(layout: DetectedLayout): DetectedLayout {
 }
 
 /**
+ * Re-encode the blueprint to a smaller JPEG before sending it for detection.
+ * The persisted PNG data URL can exceed the Edge proxy's ~4MB body limit and
+ * wastes image tokens; a max-1400px JPEG at q0.85 keeps the layout legible
+ * while shrinking the payload. Browser-only (uses a DOM canvas); falls back to
+ * the original URL if anything is unavailable.
+ */
+async function downscaleForDetection(
+  dataUrl: string,
+  maxDim = 1400,
+  quality = 0.85,
+): Promise<string> {
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return dataUrl; // best-effort — fall back to the original on any failure
+  }
+}
+
+/**
  * Preferred path: a same-origin serverless proxy (api/detect) holds the API
  * key server-side, so nothing secret reaches the browser. Throws
  * ProxyUnavailable when there is no proxy here (static hosting / local file),
@@ -131,12 +165,13 @@ function finalize(layout: DetectedLayout): DetectedLayout {
 export async function detectViaProxy(
   imageDataUrl: string,
 ): Promise<DetectedLayout> {
+  const payload = await downscaleForDetection(imageDataUrl);
   let res: Response;
   try {
     res = await fetch('/api/detect', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ imageDataUrl }),
+      body: JSON.stringify({ imageDataUrl: payload }),
     });
   } catch {
     throw new ProxyUnavailable(); // network error → no proxy here
@@ -162,6 +197,7 @@ export async function detectDirect(
   imageDataUrl: string,
   apiKey: string,
 ): Promise<DetectedLayout> {
+  const payload = await downscaleForDetection(imageDataUrl);
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -176,7 +212,7 @@ export async function detectDirect(
           role: 'user',
           content: [
             { type: 'text', text: PROMPT },
-            { type: 'image_url', image_url: { url: imageDataUrl, detail: 'high' } },
+            { type: 'image_url', image_url: { url: payload, detail: 'high' } },
           ],
         },
       ],

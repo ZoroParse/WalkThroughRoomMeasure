@@ -10,6 +10,7 @@ import {
   type Edge,
   type AppPhase,
   type ComponentType,
+  type FurnitureKind,
   emptyProject,
 } from './types.ts';
 import { loadProject, saveProjectDebounced } from './persistence.ts';
@@ -92,9 +93,25 @@ class Store {
     });
   }
 
+  /** Set the kind for a furniture piece — every edge sharing its loopId (or
+   *  just the one edge when it has no loopId). */
+  setFurnitureKind(edgeId: string, kind: FurnitureKind): void {
+    this.update((p) => {
+      const e = p.edges.find((e) => e.id === edgeId);
+      if (!e) return;
+      const key = e.loopId ?? e.id;
+      for (const edge of p.edges) {
+        if (edge.type === 'furniture' && (edge.loopId ?? edge.id) === key) {
+          edge.kind = kind;
+        }
+      }
+    });
+  }
+
   deleteEdge(id: string): void {
     this.update((p) => {
       p.edges = p.edges.filter((e) => e.id !== id);
+      delete p.measurements[id];
       this.pruneOrphans(p);
     });
   }
@@ -102,6 +119,9 @@ class Store {
   /** Delete a node and every edge touching it. */
   deleteNode(id: string): void {
     this.update((p) => {
+      for (const e of p.edges) {
+        if (e.a === id || e.b === id) delete p.measurements[e.id];
+      }
       p.edges = p.edges.filter((e) => e.a !== id && e.b !== id);
       p.nodes = p.nodes.filter((n) => n.id !== id);
     });

@@ -9,8 +9,21 @@
 import { type Project, type Section, type Edge } from '../state/types.ts';
 import { nodeMap, findWallLoop } from './geometryHelpers.ts';
 
+/**
+ * Edges whose endpoints both still exist in the node map. A graph swap
+ * mid-chain (e.g. auto-detect while the pen has an active node) can leave an
+ * edge referencing a deleted node; skipping such danglers keeps everything
+ * downstream — section geometry, allMeasured, measuredCount — consistent so a
+ * stray edge never makes the walk impossible to finish.
+ */
+function liveEdges(p: Project): Edge[] {
+  const map = nodeMap(p);
+  return p.edges.filter((e) => map.has(e.a) && map.has(e.b));
+}
+
 export function deriveSections(p: Project): Section[] {
   const map = nodeMap(p);
+  const edges = liveEdges(p);
   const ordered: Edge[] = [];
   const taken = new Set<string>();
 
@@ -26,7 +39,7 @@ export function deriveSections(p: Project): Section[] {
     for (let i = 0; i < loop.length; i++) {
       const a = loop[i];
       const b = loop[(i + 1) % loop.length];
-      const e = p.edges.find(
+      const e = edges.find(
         (e) =>
           e.type === 'wall' &&
           ((e.a === a && e.b === b) || (e.a === b && e.b === a)),
@@ -35,27 +48,27 @@ export function deriveSections(p: Project): Section[] {
     }
   }
   // any remaining walls
-  for (const e of p.edges) if (e.type === 'wall') take(e);
+  for (const e of edges) if (e.type === 'wall') take(e);
 
   // 2. Openings — doors then windows.
-  for (const e of p.edges) if (e.type === 'door') take(e);
-  for (const e of p.edges) if (e.type === 'window') take(e);
+  for (const e of edges) if (e.type === 'door') take(e);
+  for (const e of edges) if (e.type === 'window') take(e);
 
   // 3. Furniture grouped by loopId.
   const furnitureKeys: string[] = [];
-  for (const e of p.edges) {
+  for (const e of edges) {
     if (e.type !== 'furniture') continue;
     const key = e.loopId ?? e.id;
     if (!furnitureKeys.includes(key)) furnitureKeys.push(key);
   }
   for (const key of furnitureKeys) {
-    for (const e of p.edges) {
+    for (const e of edges) {
       if (e.type === 'furniture' && (e.loopId ?? e.id) === key) take(e);
     }
   }
 
   // anything left (defensive)
-  for (const e of p.edges) take(e);
+  for (const e of edges) take(e);
 
   return ordered.map((e, i) => {
     const a = map.get(e.a)!;
@@ -75,10 +88,12 @@ export function deriveSections(p: Project): Section[] {
 
 /** True when every derived section has a measurement. */
 export function allMeasured(p: Project): boolean {
-  if (p.edges.length === 0) return false;
-  return p.edges.every((e) => typeof p.measurements[e.id] === 'number');
+  const edges = liveEdges(p);
+  if (edges.length === 0) return false;
+  return edges.every((e) => typeof p.measurements[e.id] === 'number');
 }
 
 export function measuredCount(p: Project): number {
-  return p.edges.filter((e) => typeof p.measurements[e.id] === 'number').length;
+  return liveEdges(p).filter((e) => typeof p.measurements[e.id] === 'number')
+    .length;
 }

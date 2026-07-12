@@ -123,7 +123,7 @@ class App {
 
     switch (phase) {
       case 'upload':
-        this.renderUpload();
+        void this.renderUpload();
         break;
       case 'trace':
         void this.renderTracePhase();
@@ -138,7 +138,12 @@ class App {
     }
   }
 
-  private renderUpload(): void {
+  private async renderUpload(): Promise<void> {
+    // Refresh the trace canvas from state so a "Start over" clears the previous
+    // blueprint from behind the panel (setImageFromState nulls it when there's
+    // no image).
+    await this.traceCanvas.setImageFromState();
+    this.traceCanvas.render();
     this.hud.append(
       buildUploadPanel(
         () => this.fileInput.click(),
@@ -305,6 +310,10 @@ class App {
 
   /** Replace the traced graph with the detected one (normalised → image px). */
   private applyDetected(layout: DetectedLayout): void {
+    // Lift the pen first: any active chain still references old node ids, so the
+    // next tap would otherwise add an edge with a dangling endpoint. endChain
+    // also clears the rubber-band / active-node visual state.
+    this.controller.endChain();
     const { imageW, imageH } = store.state;
     const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
     const idMap = new Map<string, string>();

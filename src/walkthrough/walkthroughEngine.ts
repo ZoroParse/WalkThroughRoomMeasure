@@ -52,6 +52,8 @@ export class WalkthroughEngine {
 
     this.center = roomCenterWorld(p, this.coords);
     this.roomRadius = roomRadiusWorld(p, this.coords, this.center);
+    // scale the fog to the room so large calibrated rooms don't fog out
+    this.scene.setEnvironmentScale(this.roomRadius * 2);
     this.sections = deriveSections(p);
     this.index = 0;
 
@@ -110,7 +112,13 @@ export class WalkthroughEngine {
   /** Reframe to an overview after rescale, looking down at the whole room. */
   overview(): void {
     this.arrow.hide();
-    const pos = this.center.clone().add(new THREE.Vector3(0, 6, 6));
+    // Steep, room-scaled vantage: rise high and pull back only modestly so the
+    // near wall stays low in frame and doesn't occlude low furniture (a bed) in
+    // the front half of the room. Scales with room size so it fits big rooms too.
+    const r = this.roomRadius;
+    const pos = this.center
+      .clone()
+      .add(new THREE.Vector3(0, r * 2.0 + 1.6, r * 0.85 + 0.5));
     this.animator.to(
       { position: pos, target: this.center.clone() },
       900,

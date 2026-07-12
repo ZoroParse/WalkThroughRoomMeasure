@@ -5,14 +5,6 @@
 
 import { type AppPhase } from '../state/types.ts';
 
-export const PHASE_ORDER: AppPhase[] = [
-  'upload',
-  'trace',
-  'walkthrough',
-  'rescale',
-  'done',
-];
-
 export const PHASE_TITLE: Record<AppPhase, { title: string; sub: string }> = {
   upload: { title: 'Add your blueprint', sub: 'Step 1 — Upload' },
   trace: { title: 'Trace the room', sub: 'Step 2 — Outline' },

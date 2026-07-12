@@ -51,6 +51,18 @@ export class SceneManager {
     this.scene.add(group);
   }
 
+  /**
+   * Scale the fog to the room's world size (diagonal in world units) so large
+   * calibrated rooms — where the camera pulls back 15–20 m — don't fog out.
+   * The max() floors keep the current cosy look for small rooms.
+   */
+  setEnvironmentScale(diag: number): void {
+    const fog = this.scene.fog as THREE.Fog | null;
+    if (!fog) return;
+    fog.near = Math.max(8, diag * 2.2);
+    fog.far = Math.max(26, diag * 6);
+  }
+
   resize(width: number, height: number): void {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / Math.max(1, height);
@@ -79,12 +91,15 @@ export class SceneManager {
   }
 }
 
+/**
+ * Free the per-rebuild GPU resources of a discarded room group. Only
+ * geometries are disposed: materials are shared module-level singletons reused
+ * across every rebuild, so disposing them here would force a shader recompile
+ * on each scene swap.
+ */
 export function disposeGroup(group: THREE.Object3D): void {
   group.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.geometry) mesh.geometry.dispose();
-    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat?.dispose();
   });
 }
